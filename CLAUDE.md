@@ -19,6 +19,8 @@
 - **Restore DB**: `pnpm db:load`
 - **Generate Migrations**: `pnpm db:generate` ⚠️ requires TTY — see note below
 - **Apply Migrations**: `pnpm db:migrate`
+- **Backfill Set Symbols**: `pnpm db:backfill-symbols` (populates missing set symbols via TCGdex)
+- **Sync Card Images**: `pnpm images:sync` (downloads card images from TCGdex to local cache)
 
 > **Migration note**: `drizzle-kit generate` and `drizzle-kit push` require an interactive TTY for column conflict resolution. When running from a non-TTY shell (e.g. Claude Code), write migration SQL manually following the recreate-table pattern used in existing migrations, add it to `drizzle/meta/_journal.json`, then apply it directly with `better-sqlite3` via a Node.js script. See `drizzle/0002_tags_storage_location.sql` for an example.
 
@@ -29,8 +31,8 @@ All configs are JSON files under `src/config/` — they drive both DB schema typ
 - `languages.json` — EN, JP
 - `statuses.json` — vaulted, listed, sold
 - `storageTypes.json` — raw, graded (sealed was removed; it is now a tag)
-- `tags.json` — special card attributes affecting condition/value (sealed, pokemon-center-stamp, miscentered, 1st-edition, shadowless, cosmos-holo, reverse-holo)
-- `storageLocations.json` — physical storage locations (Office Wardrobe, Zapdos Tin, Eevee Tin)
+- `tags.json` — special card attributes affecting condition/value (sealed, pokemon-center-stamp, miscentered, 1st-edition, cosmos-holo, reverse-holo, stamped-promo, metal)
+- `storageLocations.json` — physical storage locations (Office Wardrobe, Zapdos Tin, Jolteon Tin)
 
 To add new tags or storage locations, edit those JSON files — no schema migration required.
 
@@ -38,10 +40,16 @@ To add new tags or storage locations, edit those JSON files — no schema migrat
 - **Project Structure**:
   - `vite.config.ts`: Configuration & Express API Router middleware under `/api/*`
   - `vitest.config.ts`: Vitest test runner config (jsdom default, node for backend tests)
-  - `src/backend/`: Drizzle schemas (`schema.ts`), DB sync scripts (`scripts/`), Express routers (`routes/`)
+  - `src/backend/`: Drizzle schemas (`schema.ts`), DB sync scripts (`scripts/`), Express routers (`routes/`), shared lib (`lib/`)
   - `src/backend/routes/inventory.ts`: `createInventoryRouter(db)` factory — all `/api/inventory` handlers
+  - `src/backend/lib/config.ts`: Config loader for JSON config files
+  - `src/backend/lib/imageCache.ts`: Local card image cache management
   - `src/frontend/`: React components, custom contexts, visual interfaces
   - `src/frontend/types.ts`: Shared TypeScript interfaces — never duplicate across component files
+  - `src/frontend/context/CollectionContext.tsx`: Global collection state (items, loading, refresh)
+  - `src/frontend/lib/cardImage.ts`: Card image URL resolution (local cache → TCGdex fallback)
+  - `src/frontend/lib/cardmarket.ts`: Cardmarket search link generator
+  - `src/frontend/lib/ebay.ts`: eBay UK sold comps link generator
   - `src/test/`: Test infrastructure — setup, helpers, frontend and backend test suites
 - **Imports**: Use explicit relative paths (e.g., `import ... from '../../context/InspectorContext'`).
 - **Database**:
@@ -71,3 +79,5 @@ To add new tags or storage locations, edit those JSON files — no schema migrat
 - `tags` is a `string[]` on `InventoryItem`; always check against `tags.json` for valid IDs.
 - `storageLocation` is nullable — items may have no assigned location.
 - Initial valuation is `null` by default. Use `POST /api/inventory/:id/valuations` to add price history after adding a card.
+- `CardMetadata` (mapped from the `cards` table) includes `setSymbol` and `artist` fields added in migration `0003_set_symbol.sql`.
+- `SalesRecord` (mapped from `salesLedger` table) tracks platform, listing URL, listed price, sale price, fees, shipping, and dates. Retrieved as `salesRecord?` on `InventoryItem`.

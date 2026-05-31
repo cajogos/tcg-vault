@@ -4,8 +4,8 @@ A modern Pokémon TCG collection tracker built to manage card inventory, valuati
 
 ## 🚀 Tech Stack
 
-- **Frontend**: React, Vite, TypeScript, Tailwind CSS, Lucide React (icons)
-- **Backend**: Express.js (integrated as server middleware inside Vite)
+- **Frontend**: React 19, Vite, TypeScript, Tailwind CSS 4, Lucide React (icons), shadcn/ui, Radix UI
+- **Backend**: Express.js 5 (integrated as server middleware inside Vite)
 - **Database**: SQLite (via `better-sqlite3`), Drizzle ORM
 - **Testing**: Vitest, React Testing Library, jsdom, supertest
 - **Package Manager**: `pnpm`
@@ -23,6 +23,23 @@ A modern Pokémon TCG collection tracker built to manage card inventory, valuati
 ---
 
 ## 📦 Data Model
+
+### `cards` columns
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `sdk_id` | TEXT | TCGdex card ID |
+| `name` | TEXT | Card name |
+| `supertype` | TEXT | e.g. Pokémon, Trainer |
+| `subtypes` | TEXT (JSON) | Array of subtypes |
+| `rarity` | TEXT | Card rarity |
+| `set_number` | TEXT | Number within set |
+| `set_name` | TEXT | Set name |
+| `language` | TEXT | EN or JP |
+| `image_url` | TEXT | TCGdex image URL |
+| `set_symbol` | TEXT | Set symbol image URL |
+| `artist` | TEXT | Card illustrator |
 
 ### `inventory_items` columns
 
@@ -43,19 +60,35 @@ A modern Pokémon TCG collection tracker built to manage card inventory, valuati
 
 **No acquisition price or date is stored.** The focus is current collection state for selling.
 
+### `sales_ledger` columns
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `inventory_item_id` | TEXT FK | References `inventory_items.id` |
+| `platform` | TEXT | e.g. eBay |
+| `listing_url` | TEXT | URL to the listing |
+| `listed_price_gbp` | REAL | Listed price |
+| `date_listed` | TEXT | ISO date listed |
+| `date_sold` | TEXT | ISO date sold |
+| `final_sale_price_gbp` | REAL | Final sale price |
+| `platform_fees_gbp` | REAL | Platform fees |
+| `shipping_cost_gbp` | REAL | Shipping cost |
+
 ### Tags (`src/config/tags.json`)
 Special attributes that affect a card's condition or value:
 - `sealed` — factory-sealed (can apply to raw or graded items)
 - `pokemon-center-stamp` — Pokémon Center exclusive stamp variant
 - `miscentered` — visibly off-center print
 - `1st-edition` — first edition print run
-- `shadowless` — Base Set shadowless variant
 - `cosmos-holo` — cosmos/galaxy-foil background
 - `reverse-holo` — reverse holofoil variant
+- `stamped-promo` — card has a stamped promo mark
+- `metal` — card is made of metal
 
 ### Storage Locations (`src/config/storageLocations.json`)
 Physical locations for cards (edit this file to change locations):
-- `office-wardrobe`, `zapdos-tin`, `eevee-tin`
+- `office-wardrobe`, `zapdos-tin`, `jolteon-tin`
 
 ### Valuations
 Price history is tracked separately in `valuation_history`. Items start with no valuation — add entries via the item detail page after adding a card.
@@ -67,41 +100,67 @@ Price history is tracked separately in `valuation_history`. Items start with no 
 ```
 tcg-vault/
 ├── CLAUDE.md              # Build, test, and code guidelines for Claude Code agents
+├── config.json            # Runtime config (TCGdex API key, etc.) — gitignored
 ├── index.html             # React application mount HTML
 ├── package.json           # Scripts, dependencies, and environment config
 ├── vite.config.ts         # Vite server configuration & API routing middleware
 ├── vitest.config.ts       # Vitest test runner (jsdom for frontend, node for backend)
+├── components.json        # shadcn/ui component configuration
 ├── drizzle/               # Drizzle ORM migration SQL files and journal
+├── assets/                # Static assets (e.g. pokemon-center-label.png)
 ├── data/
 │   └── vault.db           # SQLite local database (generated on migration/load)
 └── src/
     ├── config/            # JSON config files (tags, storageTypes, conditions, etc.)
     ├── backend/
     │   ├── schema.ts      # Drizzle database tables & relational definitions
+    │   ├── lib/
+    │   │   ├── config.ts      # JSON config file loader
+    │   │   └── imageCache.ts  # Local card image cache management
     │   ├── routes/
-    │   │   └── inventory.ts  # createInventoryRouter(db) — all /api/inventory handlers
-    │   └── scripts/       # DB sync, seeding, and CLI add scripts
+    │   │   └── inventory.ts   # createInventoryRouter(db) — all /api/inventory handlers
+    │   └── scripts/
+    │       ├── cli-add.ts              # CLI quick-add card
+    │       ├── db-load.ts              # Restore DB from dump
+    │       ├── db-save.ts              # Backup DB to dump
+    │       ├── backfill-set-symbols.ts # Populate missing set symbols via TCGdex
+    │       ├── download-images.ts      # Sync card images to local cache
+    │       └── seed.ts                 # Database seeder
     ├── frontend/
     │   ├── types.ts       # Shared TypeScript interfaces (InventoryItem, etc.)
-    │   ├── App.tsx        # Main layout framework
+    │   ├── App.tsx        # Main layout framework & routing
+    │   ├── index.css      # Global styles and Tailwind directives
+    │   ├── main.tsx       # React app entry point
     │   ├── components/
     │   │   ├── forms/
-    │   │   │   └── InstanceForm.tsx   # Add card form (TCGdex search + instance config)
+    │   │   │   └── InstanceForm.tsx      # Add card form (TCGdex search + instance config)
     │   │   ├── vault/
-    │   │   │   ├── VaultGrid.tsx      # Binder-style card grid view
-    │   │   │   ├── VaultTable.tsx     # Ledger table view
-    │   │   │   └── CardVisualOverlay.tsx # Card image with overlays (foil, sealed, graded)
-    │   │   └── layout/
-    │   │       ├── Sidebar.tsx        # Navigation sidebar
-    │   │       └── InspectorPanel.tsx # Visual hover/inspection sidebar
+    │   │   │   ├── VaultGrid.tsx         # Binder-style card grid view
+    │   │   │   ├── VaultTable.tsx        # Ledger table view
+    │   │   │   ├── CardVisualOverlay.tsx # Card image with overlays (foil, sealed, graded)
+    │   │   │   └── CollectionStats.tsx   # Summary stats bar
+    │   │   ├── layout/
+    │   │   │   ├── Layout.tsx            # App shell with sidebar + content area
+    │   │   │   ├── Sidebar.tsx           # Navigation sidebar
+    │   │   │   └── InspectorPanel.tsx    # Visual hover/inspection sidebar
+    │   │   └── ui/                       # shadcn/ui primitives (badge, button, input, etc.)
     │   ├── pages/
-    │   │   └── ItemDetailsPage.tsx    # Full item detail, valuation history, sales record
+    │   │   ├── DashboardPage.tsx    # Collection overview and stats
+    │   │   ├── AddAssetPage.tsx     # Add new card workflow
+    │   │   ├── LedgerPage.tsx       # Full inventory ledger view
+    │   │   ├── ExportPage.tsx       # Export collection data
+    │   │   └── ItemDetailsPage.tsx  # Full item detail, valuation history, sales record
     │   ├── context/
+    │   │   ├── CollectionContext.tsx  # Global collection state (items, loading, refresh)
     │   │   └── InspectorContext.tsx   # Asset preview/inspection state provider
     │   └── lib/
-    │       └── ebay.ts    # eBay UK sold comps link generator
+    │       ├── cardImage.ts    # Card image URL resolution (local cache → TCGdex fallback)
+    │       ├── cardmarket.ts   # Cardmarket search link generator
+    │       ├── ebay.ts         # eBay UK sold comps link generator
+    │       └── utils.ts        # Shared utilities (cn classname helper, etc.)
     └── test/
         ├── setup.ts               # jest-dom matchers + DOM cleanup
+        ├── vitest-globals.d.ts    # Global type definitions for tests
         ├── helpers/
         │   └── renderWithRouter.tsx  # MemoryRouter wrapper for component tests
         ├── frontend/
@@ -131,10 +190,12 @@ pnpm test:coverage # Coverage report → coverage/index.html
 
 ### Database
 ```bash
-pnpm db:save      # Backup DB to data/vault_dump.sql
-pnpm db:load      # Restore DB from backup (replaces vault.db)
-pnpm db:generate  # Generate migration from schema changes (requires TTY)
-pnpm db:migrate   # Apply pending migrations
+pnpm db:save              # Backup DB to data/vault_dump.sql
+pnpm db:load              # Restore DB from backup (replaces vault.db)
+pnpm db:generate          # Generate migration from schema changes (requires TTY)
+pnpm db:migrate           # Apply pending migrations
+pnpm db:backfill-symbols  # Populate missing set symbols via TCGdex
+pnpm images:sync          # Download card images from TCGdex to local cache
 ```
 
 > **Note on migrations**: `drizzle-kit generate` requires an interactive TTY. When running from a non-TTY environment, write migration SQL manually following the recreate-table pattern in existing migrations and apply with `better-sqlite3` directly. See `CLAUDE.md` for details.
