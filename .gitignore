@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+config.json
+
+# Local data directory (kept outside repo in tcg-vault-data)
+data_backup/

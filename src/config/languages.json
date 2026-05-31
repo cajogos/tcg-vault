@@ -1,0 +1,4 @@
+[
+  { "id": "EN", "name": "English",  "description": "English language print" },
+  { "id": "JP", "name": "Japanese", "description": "Japanese language print" }
+]

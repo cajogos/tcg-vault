@@ -1,0 +1,5 @@
+[
+  { "id": "vaulted", "name": "Vaulted", "description": "Stored safely in the vault" },
+  { "id": "listed",  "name": "Listed",  "description": "Currently listed for sale" },
+  { "id": "sold",    "name": "Sold",    "description": "Sale completed" }
+]

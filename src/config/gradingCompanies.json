@@ -1,0 +1,5 @@
+[
+  { "id": "PSA", "name": "PSA", "description": "Professional Sports Authenticator" },
+  { "id": "BGS", "name": "BGS", "description": "Beckett Grading Services" },
+  { "id": "CGC", "name": "CGC", "description": "Certified Guaranty Company" }
+]

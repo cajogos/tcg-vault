@@ -1,0 +1,9 @@
+[
+  { "id": "Mint", "name": "Mint",         "description": "Pristine / perfect in every way" },
+  { "id": "NM",   "name": "Near Mint",    "description": "Minimal wear, essentially unplayed" },
+  { "id": "EX",   "name": "Excellent",    "description": "Light wear on corners or edges" },
+  { "id": "GD",   "name": "Good",         "description": "Moderate play wear, still presentable" },
+  { "id": "LP",   "name": "Light Played", "description": "Noticeable wear but no creases" },
+  { "id": "PL",   "name": "Played",       "description": "Heavy wear, creases or scuffs visible" },
+  { "id": "PR",   "name": "Poor",         "description": "Severe damage, barely collectible" }
+]

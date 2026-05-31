@@ -1,0 +1,4 @@
+[
+  { "id": "raw",    "name": "Raw Card",   "description": "Ungraded card, stored as-is" },
+  { "id": "graded", "name": "Graded Card", "description": "Card encased in a professional grading slab" }
+]
