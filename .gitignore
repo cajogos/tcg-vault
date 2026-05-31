@@ -5,3 +5,14 @@ config.json
 
 # Local data directory (kept outside repo in tcg-vault-data)
 data_backup/
+
+# Database files (data lives in ../tcg-vault-data, never in-repo)
+*.db
+*.sqlite
+*.sqlite3
+
+# Test coverage output
+coverage/
+
+# Vite local overrides
+*.local
