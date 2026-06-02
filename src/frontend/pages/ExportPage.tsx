@@ -76,7 +76,7 @@ function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent:
   const valuedItems = items.filter(item => latestValue(item) !== null);
   const total = valuedItems.reduce((sum, item) => sum + (latestValue(item) ?? 0), 0);
   const extraCols = tagIds.length;
-  const spanCols = 4 + extraCols;
+  const spanCols = 3 + extraCols;
 
   const discountRows = discountPercent !== null
     ? `<tr class="summary-row">
