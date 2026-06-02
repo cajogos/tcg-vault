@@ -29,6 +29,13 @@
       "when": 1748563200000,
       "tag": "0003_set_symbol",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1780358400000,
+      "tag": "0004_export_history",
+      "breakpoints": true
     }
   ]
 }

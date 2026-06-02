@@ -61,6 +61,18 @@ export const salesLedger = sqliteTable('sales_ledger',
   shippingCostGbp: real('shipping_cost_gbp'),
 });
 
+export const exportHistory = sqliteTable('export_history',
+{
+  id: text('id').primaryKey(),
+  exportedAt: text('exported_at').notNull(),
+  fileName: text('file_name').notNull(),
+  itemCount: integer('item_count').notNull(),
+  totalValueGbp: real('total_value_gbp'),
+  discountPercent: real('discount_percent'),
+  finalValueGbp: real('final_value_gbp'),
+  includedTagIds: text('included_tag_ids', { mode: 'json' }).$type<string[]>().notNull().default([]),
+});
+
 export const cardsRelations = relations(cards, ({ many }) =>
 ({
   instances: many(inventoryItems),

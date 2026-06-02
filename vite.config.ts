@@ -7,6 +7,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import path from 'path';
 import * as schema from './src/backend/schema';
 import { createInventoryRouter } from './src/backend/routes/inventory';
+import { createExportsRouter } from './src/backend/routes/exports';
 import { dbPath, imagesDir } from './src/backend/lib/config';
 
 const sqlite = new Database(dbPath);
@@ -15,6 +16,7 @@ const db = drizzle(sqlite, { schema });
 const apiApp = express();
 apiApp.use(express.json());
 apiApp.use('/inventory', createInventoryRouter(db));
+apiApp.use('/exports', createExportsRouter(db));
 
 const imagesMiddleware = express.static(imagesDir);
 

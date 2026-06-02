@@ -52,6 +52,18 @@ export interface SalesRecord
   shippingCostGbp: number | null;
 }
 
+export interface ExportRecord
+{
+  id: string;
+  exportedAt: string;
+  fileName: string;
+  itemCount: number;
+  totalValueGbp: number | null;
+  discountPercent: number | null;
+  finalValueGbp: number | null;
+  includedTagIds: string[];
+}
+
 export interface InventoryItem
 {
   id: string;

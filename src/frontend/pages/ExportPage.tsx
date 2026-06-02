@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FileDown, CheckSquare, Square, Download } from 'lucide-react';
+import { FileDown, CheckSquare, Square, Download, History } from 'lucide-react';
 import { useCollection } from '../context/CollectionContext';
-import { InventoryItem } from '../types';
+import { InventoryItem, ExportRecord } from '../types';
 import tagsConfig from '../../config/tags.json';
 import { cardImageUrl } from '../lib/cardImage';
 
@@ -38,7 +38,17 @@ function escapeHtml(str: string): string
     .replace(/"/g, '&quot;');
 }
 
-function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent: number | null): string
+function cardGradeLabel(item: InventoryItem): string
+{
+  if (item.storageType === 'graded' && item.gradingCompany && item.grade !== null)
+  {
+    const g = item.grade % 1 === 0 ? String(item.grade) : item.grade.toFixed(1);
+    return `[${item.gradingCompany} ${g}]`;
+  }
+  return item.condition ? `[${item.condition}]` : '';
+}
+
+function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent: number | null, baseUrl: string): string
 {
   const tagHeaders = tagIds
     .map(id => `<th>${escapeHtml(tagShortLabel(id))}</th>`)
@@ -47,16 +57,17 @@ function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent:
   const rows = items.map(item =>
   {
     const value = latestValue(item);
-    const imgSrc = cardImageUrl(item.cardMetadata.imageUrl, 'low');
+    const rawImgSrc = cardImageUrl(item.cardMetadata.imageUrl, 'low');
+    const imgSrc = rawImgSrc.startsWith('/') ? `${baseUrl}${rawImgSrc}` : rawImgSrc;
+    const label = cardGradeLabel(item);
     const tagCells = tagIds
       .map(id => `<td class="tag-cell">${item.tags.includes(id) ? '✓' : '—'}</td>`)
       .join('');
 
     return `<tr>
       <td class="img-cell"><img src="${escapeHtml(imgSrc)}" width="70" alt="${escapeHtml(item.cardMetadata.name)}" /></td>
-      <td class="name-cell">${escapeHtml(item.cardMetadata.name)}</td>
-      <td>${escapeHtml(item.cardMetadata.setName)}</td>
-      <td class="number-cell">${escapeHtml(item.cardMetadata.setNumber)}</td>
+      <td class="name-cell">${escapeHtml(item.cardMetadata.name)}${label ? ` <span class="grade-label">${escapeHtml(label)}</span>` : ''}</td>
+      <td>${escapeHtml(item.cardMetadata.setName)} <span class="set-number">[${escapeHtml(item.cardMetadata.setNumber)}]</span></td>
       <td class="value-cell">${escapeHtml(formatGbp(value))}</td>
       ${tagCells}
     </tr>`;
@@ -65,7 +76,7 @@ function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent:
   const valuedItems = items.filter(item => latestValue(item) !== null);
   const total = valuedItems.reduce((sum, item) => sum + (latestValue(item) ?? 0), 0);
   const extraCols = tagIds.length;
-  const spanCols = 5 + extraCols;
+  const spanCols = 4 + extraCols;
 
   const discountRows = discountPercent !== null
     ? `<tr class="summary-row">
@@ -96,7 +107,8 @@ function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent:
     .img-cell { width: 86px; padding: 4px 6px; }
     .img-cell img { display: block; border-radius: 4px; }
     .name-cell { font-weight: 500; }
-    .number-cell { color: #555; font-size: 12px; }
+    .grade-label { color: #555; font-weight: 400; font-size: 11px; }
+    .set-number { color: #777; font-size: 11px; }
     .value-cell { font-weight: 600; white-space: nowrap; }
     .tag-cell { text-align: center; color: #333; }
     .summary-row td { background: #f5f5f5; border-top: 2px solid #bbb; }
@@ -119,7 +131,6 @@ function generateHtml(items: InventoryItem[], tagIds: string[], discountPercent:
         <th>Image</th>
         <th>Name</th>
         <th>Set</th>
-        <th>Number</th>
         <th>Est. Value</th>
         ${tagHeaders}
       </tr>
@@ -143,12 +154,12 @@ export const ExportPage: React.FC = () =>
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [includedTagColumns, setIncludedTagColumns] = useState<Set<string>>(new Set());
   const [discountInput, setDiscountInput] = useState<string>('');
+  const [exportHistory, setExportHistory] = useState<ExportRecord[]>([]);
 
   const sorted = [...collection].sort((a, b) =>
     a.cardMetadata.name.localeCompare(b.cardMetadata.name)
   );
 
-  // Tags present anywhere in the collection, in config order
   const allCollectionTags = tagsConfig
     .map(t => t.id)
     .filter(id => collection.some(item => item.tags.includes(id)));
@@ -157,6 +168,27 @@ export const ExportPage: React.FC = () =>
   const availableTags = allCollectionTags.filter(id =>
     selectedItems.some(item => item.tags.includes(id))
   );
+
+  const fetchHistory = useCallback(async () =>
+  {
+    try
+    {
+      const res = await fetch('/api/exports');
+      if (res.ok)
+      {
+        setExportHistory(await res.json());
+      }
+    }
+    catch
+    {
+      // history is non-critical; ignore errors
+    }
+  }, []);
+
+  useEffect(() =>
+  {
+    fetchHistory();
+  }, [fetchHistory]);
 
   useEffect(() =>
   {
@@ -221,19 +253,45 @@ export const ExportPage: React.FC = () =>
     return v !== null ? sum + v : sum;
   }, 0);
 
-  const handleExport = useCallback(() =>
+  const handleExport = useCallback(async () =>
   {
-    const html = generateHtml(selectedItems, availableTags.filter(t => includedTagColumns.has(t)), discountPercent);
+    const activeTags = availableTags.filter(t => includedTagColumns.has(t));
+    const html = generateHtml(selectedItems, activeTags, discountPercent, window.location.origin);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tcg-export-${new Date().toISOString().slice(0, 10)}.html`;
+    const fileName = `tcg-export-${new Date().toISOString().slice(0, 10)}.html`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [selectedItems, availableTags, includedTagColumns, discountPercent]);
+
+    try
+    {
+      await fetch('/api/exports',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          exportedAt: new Date().toISOString(),
+          fileName,
+          itemCount: selectedItems.length,
+          totalValueGbp: selectedTotal > 0 ? selectedTotal : null,
+          discountPercent: discountPercent,
+          finalValueGbp: discountPercent !== null ? selectedTotal * (1 - discountPercent / 100) : null,
+          includedTagIds: activeTags,
+        }),
+      });
+      fetchHistory();
+    }
+    catch
+    {
+      // history recording is non-critical; ignore errors
+    }
+  }, [selectedItems, availableTags, includedTagColumns, discountPercent, selectedTotal, fetchHistory]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -274,7 +332,6 @@ export const ExportPage: React.FC = () =>
                     <th className="w-14 py-2" />
                     <th className="text-left px-3 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap">Name</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap">Set</th>
-                    <th className="text-left px-3 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap">#</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap">Est. Value</th>
                     {allCollectionTags.map(tagId => (
                       <th key={tagId} className="text-center px-2 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap">
@@ -288,6 +345,7 @@ export const ExportPage: React.FC = () =>
                   {
                     const selected = selectedIds.has(item.id);
                     const value = latestValue(item);
+                    const label = cardGradeLabel(item);
                     return (
                       <tr
                         key={item.id}
@@ -326,12 +384,13 @@ export const ExportPage: React.FC = () =>
                         </td>
                         <td className="px-3 py-1.5 font-medium text-slate-200 whitespace-nowrap">
                           {item.cardMetadata.name}
+                          {label && (
+                            <span className="ml-1.5 text-xs font-normal text-slate-500">{label}</span>
+                          )}
                         </td>
                         <td className="px-3 py-1.5 text-slate-400 text-xs max-w-[160px] truncate">
                           {item.cardMetadata.setName}
-                        </td>
-                        <td className="px-3 py-1.5 text-slate-500 text-xs font-mono whitespace-nowrap">
-                          {item.cardMetadata.setNumber}
+                          <span className="ml-1 text-slate-600 font-mono">[{item.cardMetadata.setNumber}]</span>
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-xs font-medium text-slate-300 whitespace-nowrap">
                           {formatGbp(value)}
@@ -355,7 +414,7 @@ export const ExportPage: React.FC = () =>
       </div>
 
       {/* Right: export controls */}
-      <div className="w-64 shrink-0 flex flex-col p-4 gap-4">
+      <div className="w-64 shrink-0 flex flex-col p-4 gap-4 overflow-y-auto">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Download className="w-4 h-4 text-indigo-400" />
@@ -445,6 +504,33 @@ export const ExportPage: React.FC = () =>
                     {tagDescription(tagId)}
                   </span>
                 </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {exportHistory.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 text-slate-500" />
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">History</p>
+            </div>
+            <div className="flex flex-col gap-1">
+              {exportHistory.slice(0, 5).map(record => (
+                <div key={record.id} className="rounded-md bg-slate-800/60 px-2.5 py-2 flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs text-slate-400 tabular-nums">
+                      {new Date(record.exportedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-300 tabular-nums">
+                      {formatGbp(record.finalValueGbp ?? record.totalValueGbp)}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-600">
+                    {record.itemCount} card{record.itemCount !== 1 ? 's' : ''}
+                    {record.discountPercent !== null && ` · ${record.discountPercent}% off`}
+                  </span>
+                </div>
               ))}
             </div>
           </div>
