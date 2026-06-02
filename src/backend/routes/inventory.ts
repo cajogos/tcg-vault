@@ -1,9 +1,13 @@
 import { Router } from 'express';
+import multer from 'multer';
+import fs from 'fs';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../schema';
 import { eq } from 'drizzle-orm';
 import statusesJson from '../../config/statuses.json';
-import { downloadCardImage } from '../lib/imageCache';
+import { downloadCardImage, localImagePath, localImageUrl } from '../lib/imageCache';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const VALID_STATUSES = statusesJson.map(s => s.id);
 type ItemStatus = typeof statusesJson[number]['id'];
@@ -127,6 +131,41 @@ export function createInventoryRouter(
       await db.insert(schema.valuationHistory).values(entry);
 
       res.status(201).json({ success: true, entry });
+    }
+    catch (error)
+    {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  router.post('/:id/image', upload.single('image'), async (req, res) =>
+  {
+    try
+    {
+      const { id } = req.params;
+
+      if (!req.file)
+      {
+        return res.status(400).json({ error: 'No image file provided' });
+      }
+
+      const item = await db.query.inventoryItems.findFirst({
+        where: (items, { eq: eqFn }) => eqFn(items.id, id),
+      });
+
+      if (!item)
+      {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+
+      const { cardId } = item;
+      fs.writeFileSync(localImagePath(cardId), req.file.buffer);
+
+      await db.update(schema.cards)
+        .set({ imageUrl: localImageUrl(cardId) })
+        .where(eq(schema.cards.id, cardId));
+
+      res.json({ imageUrl: localImageUrl(cardId) });
     }
     catch (error)
     {

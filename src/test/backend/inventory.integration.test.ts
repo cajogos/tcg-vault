@@ -280,4 +280,69 @@ describe('Inventory API — in-memory SQLite', () =>
     expect(res.body[0].gradingCompany).toBe('PSA');
     expect(res.body[0].tags).toContain('sealed');
   });
+
+  it('graded card: full happy path stores grade, company, and certNumber', async () =>
+  {
+    await request(app).post('/api/inventory').send({
+      cardData: testCard,
+      instanceData:
+      {
+        ...testInstance,
+        id: 'inv-graded-full',
+        storageType: 'graded',
+        condition: null,
+        gradingCompany: 'PSA',
+        grade: 9,
+        certNumber: '12345678',
+        tags: [],
+      },
+    });
+    const res = await request(app).get('/api/inventory');
+    const item = res.body[0];
+    expect(item.storageType).toBe('graded');
+    expect(item.gradingCompany).toBe('PSA');
+    expect(item.grade).toBe(9);
+    expect(item.certNumber).toBe('12345678');
+    expect(item.condition).toBeNull();
+  });
+
+  it('custom card: sdkId=custom and empty imageUrl inserts correctly', async () =>
+  {
+    const customCard =
+    {
+      id: 'custom-abc123-JP',
+      sdkId: 'custom',
+      name: 'Iron Thorns',
+      supertype: 'Unknown',
+      rarity: 'Unknown',
+      setNumber: '098/SV-P',
+      setName: 'SV-P Promos',
+      language: 'JP' as const,
+      imageUrl: '',
+    };
+    const res = await request(app).post('/api/inventory').send({
+      cardData: customCard,
+      instanceData: { ...testInstance, id: 'inv-custom-001', cardId: 'custom-abc123-JP' },
+    });
+    expect(res.status).toBe(201);
+    const get = await request(app).get('/api/inventory');
+    expect(get.body[0].cardMetadata.setNumber).toBe('098/SV-P');
+    expect(get.body[0].cardMetadata.sdkId).toBe('custom');
+  });
+
+  it('multiple instances of same card are both returned by GET', async () =>
+  {
+    await request(app).post('/api/inventory').send({
+      cardData: testCard,
+      instanceData: { ...testInstance, id: 'inv-multi-001' },
+    });
+    await request(app).post('/api/inventory').send({
+      cardData: testCard,
+      instanceData: { ...testInstance, id: 'inv-multi-002' },
+    });
+    const res = await request(app).get('/api/inventory');
+    expect(res.body).toHaveLength(2);
+    expect(res.body.map((i: { id: string }) => i.id)).toContain('inv-multi-001');
+    expect(res.body.map((i: { id: string }) => i.id)).toContain('inv-multi-002');
+  });
 });

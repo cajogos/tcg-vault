@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import
 {
   ArrowLeft, CheckCircle, Tag, Ban, Globe, ShieldAlert,
   ExternalLink, Receipt,
-  CreditCard, Package, Star, History, PoundSterling, ChevronDown, ChevronUp, Trash2, MapPin,
+  CreditCard, Package, Star, History, PoundSterling, ChevronDown, ChevronUp, Trash2, MapPin, Upload,
 } from 'lucide-react';
 import { useCollection } from '../context/CollectionContext';
 import { InventoryItem, ValuationEntry, Status } from '../types';
@@ -180,6 +180,10 @@ export const ItemDetailsPage: React.FC = () =>
   const [deleting, setDeleting] = useState(false);
   const [imgSrc, setImgSrc] = useState<'low' | 'high' | 'original'>('low');
   const [localHistory, setLocalHistory] = useState<ValuationEntry[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const item = collection.find(i => i.id === id);
 
@@ -205,7 +209,7 @@ export const ItemDetailsPage: React.FC = () =>
   const sortedHistory = [...priceHistory].sort((a, b) => b.checkDate.localeCompare(a.checkDate));
   const currentValuation = sortedHistory[0]?.checkedValueGbp ?? null;
 
-  const imageUrl = card.imageUrl ? cardImageUrl(card.imageUrl, imgSrc) : null;
+  const imageUrl = uploadedImageUrl ?? (card.imageUrl ? cardImageUrl(card.imageUrl, imgSrc) : null);
 
   const onStatusSelect = async (val: string) =>
   {
@@ -225,6 +229,39 @@ export const ItemDetailsPage: React.FC = () =>
   {
     setLocalHistory([...(localHistory ?? item.priceHistory), entry]);
     refresh();
+  };
+
+  const handlePhotoUpload = async (file: File) =>
+  {
+    setUploading(true);
+    setUploadError(null);
+    try
+    {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch(`/api/inventory/${item.id}/image`,
+      {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok)
+      {
+        const data = await res.json();
+        setUploadError(data.error || 'Upload failed.');
+        return;
+      }
+      const data = await res.json();
+      setUploadedImageUrl(`${data.imageUrl}?t=${Date.now()}`);
+      refresh();
+    }
+    catch
+    {
+      setUploadError('Network error. Try again.');
+    }
+    finally
+    {
+      setUploading(false);
+    }
   };
 
   const netProfit = sales?.finalSalePriceGbp != null
@@ -290,6 +327,31 @@ export const ItemDetailsPage: React.FC = () =>
             )}
             <span className="uppercase tracking-wider">{card.setNumber}</span>
           </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) =>
+            {
+              const file = e.target.files?.[0];
+              if (file) handlePhotoUpload(file);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg text-slate-400 border border-slate-700 hover:bg-slate-800 hover:text-slate-200 transition-all disabled:opacity-50"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {uploading ? 'Uploading...' : 'Replace Photo'}
+          </button>
+          {uploadError && (
+            <p className="text-xs text-rose-400 font-medium text-center">{uploadError}</p>
+          )}
         </div>
 
         {/* Detail panels */}

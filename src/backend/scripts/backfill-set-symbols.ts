@@ -42,8 +42,8 @@ async function main()
 
   for (const { setId, language, cardIds } of setGroups.values())
   {
-    const langCode = language === 'JP' ? 'jp' : 'en';
-    const tcgdex = new TCGdex(langCode as 'en' | 'jp');
+    const langCode = language === 'JP' ? 'ja' : 'en';
+    const tcgdex = new TCGdex(langCode as 'en' | 'ja');
 
     try
     {

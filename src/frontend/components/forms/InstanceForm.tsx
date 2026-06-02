@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TCGdex, { Query, type CardModel, type CardResumeModel } from '@tcgdex/sdk';
-import { Search, Loader2, CheckCircle2, ShieldAlert, FileText, X, Clock, Tag, MapPin } from 'lucide-react';
+import { Search, Loader2, CheckCircle2, ShieldAlert, FileText, X, Clock, Tag, MapPin, Pencil, Upload } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -42,6 +42,7 @@ interface InstanceFormProps
 
 export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
 {
+  // TCGdex discovery state
   const [language, setLanguage] = useState<Language>('EN');
   const [sets, setSets] = useState<SetEntry[]>([]);
   const [selectedSet, setSelectedSet] = useState<string>('');
@@ -52,12 +53,25 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
   const [searchResults, setSearchResults] = useState<CardResumeModel[]>([]);
   const [searchingCards, setSearchingCards] = useState<boolean>(false);
   const [loadingSets, setLoadingSets] = useState<boolean>(false);
+  const [setCardCount, setSetCardCount] = useState<number | null>(null);
 
   const setSearchRef = useRef<HTMLDivElement>(null);
 
   const [selectedCard, setSelectedCard] = useState<CardModel | null>(null);
   const [selectedCardLoading, setSelectedCardLoading] = useState<boolean>(false);
 
+  // Custom mode state
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
+  const [customName, setCustomName] = useState<string>('');
+  const [customSetName, setCustomSetName] = useState<string>('');
+  const [customSetNumber, setCustomSetNumber] = useState<string>('');
+  const [customSupertype, setCustomSupertype] = useState<string>('Pokémon');
+  const [customRarity, setCustomRarity] = useState<string>('');
+  const [customArtist, setCustomArtist] = useState<string>('');
+  const [customImageUrl, setCustomImageUrl] = useState<string>('');
+  const [customImageFile, setCustomImageFile] = useState<File | null>(null);
+
+  // Instance metadata state
   const [storageType, setStorageType] = useState<StorageType>('raw');
   const [condition, setCondition] = useState<Condition>('NM');
   const [gradingCompany, setGradingCompany] = useState<GradingCompany>('PSA');
@@ -84,7 +98,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
       setSelectedCard(null);
       try
       {
-        const tcgdex = new TCGdex(language.toLowerCase() === 'jp' ? 'jp' : 'en');
+        const tcgdex = new TCGdex(language === 'JP' ? 'ja' : 'en');
         const list = await tcgdex.set.list();
         if (list)
         {
@@ -104,8 +118,62 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
         setRecentSets(loadRecentSets(language));
       }
     };
-    loadSets();
-  }, [language]);
+    if (!isCustomMode)
+    {
+      loadSets();
+    }
+  }, [language, isCustomMode]);
+
+  useEffect(() =>
+  {
+    if (!selectedSet) return;
+
+    let cancelled = false;
+
+    const loadSetCards = async () =>
+    {
+      setFormError(null);
+      setSearchingCards(true);
+      setSearchResults([]);
+      setSelectedCard(null);
+      setSetCardCount(null);
+      try
+      {
+        const tcgdex = new TCGdex(language === 'JP' ? 'ja' : 'en');
+        const setDetail = await tcgdex.set.get(selectedSet);
+        if (!cancelled)
+        {
+          const official = setDetail?.cardCount?.official ?? 0;
+          setSetCardCount(official);
+          if (setDetail?.cards && setDetail.cards.length > 0)
+          {
+            let cardsList = setDetail.cards as CardResumeModel[];
+            if (cardNameQuery.trim())
+            {
+              const query = cardNameQuery.toLowerCase();
+              cardsList = cardsList.filter((c) => c.name.toLowerCase().includes(query));
+            }
+            setSearchResults(cardsList);
+          }
+        }
+      }
+      catch (err)
+      {
+        if (!cancelled)
+        {
+          console.error('Error loading set cards:', err);
+          setFormError('Failed to load cards for this set.');
+        }
+      }
+      finally
+      {
+        if (!cancelled) setSearchingCards(false);
+      }
+    };
+
+    loadSetCards();
+    return () => { cancelled = true; };
+  }, [selectedSet]);
 
   useEffect(() =>
   {
@@ -121,7 +189,10 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
   }, []);
 
   const filteredSets = setQuery.trim()
-    ? sets.filter((s) => s.name.toLowerCase().includes(setQuery.toLowerCase()))
+    ? sets.filter((s) =>
+        s.name.toLowerCase().includes(setQuery.toLowerCase()) ||
+        s.id.toLowerCase().includes(setQuery.toLowerCase())
+      )
     : [];
 
   const handleSetSelect = (set: SetEntry) =>
@@ -138,6 +209,9 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
     setSelectedSet('');
     setSetQuery('');
     setSetDropdownOpen(false);
+    setSearchResults([]);
+    setSelectedCard(null);
+    setSetCardCount(null);
   };
 
   const handleTagToggle = (tagId: string) =>
@@ -153,7 +227,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
     {
       e.preventDefault();
     }
-    if (!cardNameQuery && !selectedSet)
+    if (!cardNameQuery.trim() && !selectedSet)
     {
       setFormError('Please select a set or type a card name to search.');
       return;
@@ -166,7 +240,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
 
     try
     {
-      const tcgdex = new TCGdex(language.toLowerCase() === 'jp' ? 'jp' : 'en');
+      const tcgdex = new TCGdex(language === 'JP' ? 'ja' : 'en');
       let cardsList: CardResumeModel[] = [];
 
       if (selectedSet)
@@ -192,7 +266,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
         }
       }
 
-      setSearchResults(cardsList.slice(0, 80));
+      setSearchResults(cardsList);
     }
     catch (err)
     {
@@ -211,7 +285,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
     setFormError(null);
     try
     {
-      const tcgdex = new TCGdex(language.toLowerCase() === 'jp' ? 'jp' : 'en');
+      const tcgdex = new TCGdex(language === 'JP' ? 'ja' : 'en');
       const card = await tcgdex.card.get(cardId);
       if (card)
       {
@@ -310,28 +384,587 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
     }
   };
 
+  const handleModeSwitch = useCallback((custom: boolean) =>
+  {
+    setIsCustomMode(custom);
+    setFormError(null);
+    if (custom)
+    {
+      setSelectedCard(null);
+      setSearchResults([]);
+      setSelectedSet('');
+      setSetQuery('');
+      setCardNameQuery('');
+    }
+    else
+    {
+      setCustomName('');
+      setCustomSetName('');
+      setCustomSetNumber('');
+      setCustomRarity('');
+      setCustomArtist('');
+      setCustomImageUrl('');
+      setCustomImageFile(null);
+    }
+  }, []);
+
+  const handleCustomSubmit = async (e: React.FormEvent) =>
+  {
+    e.preventDefault();
+
+    if (!customName.trim())
+    {
+      setFormError('Card name is required.');
+      return;
+    }
+    if (!customSetName.trim())
+    {
+      setFormError('Set name is required.');
+      return;
+    }
+    if (!customSetNumber.trim())
+    {
+      setFormError('Card number is required.');
+      return;
+    }
+
+    setFormError(null);
+    setSubmitting(true);
+
+    try
+    {
+      const cardUuid = crypto.randomUUID();
+      const cardId = `custom-${cardUuid}-${language}`;
+      const itemUuid = crypto.randomUUID();
+
+      const cardData =
+      {
+        id: cardId,
+        sdkId: 'custom',
+        name: customName.trim(),
+        supertype: customSupertype || 'Unknown',
+        subtypes: null,
+        rarity: customRarity.trim() || 'Unknown',
+        setNumber: customSetNumber.trim(),
+        setName: customSetName.trim(),
+        language,
+        imageUrl: customImageUrl.trim(),
+        setSymbol: null,
+        artist: customArtist.trim() || null,
+      };
+
+      const instanceData =
+      {
+        id: itemUuid,
+        cardId,
+        storageType,
+        condition: storageType === 'raw' ? condition : null,
+        gradingCompany: storageType === 'graded' ? gradingCompany : null,
+        grade: storageType === 'graded' ? parseFloat(grade) || null : null,
+        certNumber: storageType === 'graded' ? certNumber || null : null,
+        isMisprint,
+        notes: notes.trim() || null,
+        tags: selectedTags,
+        storageLocation: storageLocation || null,
+        status,
+      };
+
+      const response = await fetch('/api/inventory',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardData, instanceData }),
+      });
+
+      if (!response.ok)
+      {
+        const errorData = await response.json();
+        setFormError(errorData.error || 'Server rejected the submission.');
+        return;
+      }
+
+      if (customImageFile)
+      {
+        const formData = new FormData();
+        formData.append('image', customImageFile);
+        await fetch(`/api/inventory/${itemUuid}/image`,
+        {
+          method: 'POST',
+          body: formData,
+        });
+      }
+
+      onSuccess();
+    }
+    catch (err)
+    {
+      console.error('Error submitting custom asset:', err);
+      setFormError('Network error submitting physical asset.');
+    }
+    finally
+    {
+      setSubmitting(false);
+    }
+  };
+
+  const sharedInstanceFields = (
+    <div className="space-y-4">
+      <div>
+        <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Storage Configuration</Label>
+        <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800/80">
+          {(['raw', 'graded'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setStorageType(type)}
+              className={`py-1.5 text-xs font-semibold rounded transition-all uppercase tracking-wider ${
+                storageType === type
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {storageType === 'raw' && (
+        <div>
+          <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Estimated Condition</Label>
+          <Select
+            value={condition}
+            onValueChange={(v) => setCondition(v as Condition)}
+          >
+            <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {conditions.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {storageType === 'graded' && (
+        <div className="grid grid-cols-3 gap-2 p-3 bg-slate-950/60 rounded-lg border border-slate-800">
+          <div>
+            <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Company</Label>
+            <Select
+              value={gradingCompany}
+              onValueChange={(v) => setGradingCompany(v as GradingCompany)}
+            >
+              <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-8 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50 px-2">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {gradingCompanies.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Grade</Label>
+            <Input
+              type="number"
+              min="1"
+              max="10"
+              step="0.5"
+              placeholder="10"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              className="bg-slate-950 border-slate-800 text-slate-200 text-xs h-8 focus-visible:border-indigo-500/50 focus-visible:ring-0 px-2"
+            />
+          </div>
+          <div>
+            <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Cert #</Label>
+            <Input
+              type="text"
+              placeholder="847291..."
+              value={certNumber}
+              onChange={(e) => setCertNumber(e.target.value)}
+              className="bg-slate-950 border-slate-800 text-slate-200 text-xs h-8 focus-visible:border-indigo-500/50 focus-visible:ring-0 px-2"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 p-2 bg-slate-950/40 rounded border border-slate-800/50">
+        <input
+          type="checkbox"
+          id="isMisprint"
+          checked={isMisprint}
+          onChange={(e) => setIsMisprint(e.target.checked)}
+          className="w-3.5 h-3.5 accent-indigo-500 rounded border-slate-800 cursor-pointer bg-slate-950"
+        />
+        <Label htmlFor="isMisprint" className="text-[10px] text-slate-400 font-medium cursor-pointer select-none">
+          This is an Error Card / Misprint configuration
+        </Label>
+      </div>
+
+      <div>
+        <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1.5">
+          <Tag className="w-3 h-3 text-indigo-400" />
+          Card Tags
+        </Label>
+        <div className="space-y-1 p-3 bg-slate-950/40 rounded-lg border border-slate-800/50">
+          {tagsConfig.map((tag) => (
+            <div key={tag.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`tag-${tag.id}`}
+                checked={selectedTags.includes(tag.id)}
+                onChange={() => handleTagToggle(tag.id)}
+                className="w-3.5 h-3.5 accent-indigo-500 rounded border-slate-800 cursor-pointer bg-slate-950 shrink-0"
+              />
+              <label htmlFor={`tag-${tag.id}`} className="flex items-baseline gap-1.5 cursor-pointer select-none">
+                <span className="text-[10px] font-mono font-bold text-slate-300">{tag.id}</span>
+                <span className="text-[9px] text-slate-600">— {tag.description}</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1.5">
+          <MapPin className="w-3 h-3 text-indigo-400" />
+          Storage Location
+        </Label>
+        <Select
+          value={storageLocation || 'none'}
+          onValueChange={(v) => setStorageLocation(v === 'none' ? '' : v)}
+        >
+          <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
+            <SelectValue placeholder="Unspecified" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Unspecified</SelectItem>
+            {storageLocationsConfig.map((loc) => (
+              <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Initial Status</Label>
+          <Select
+            value={status}
+            onValueChange={(v) => setStatus(v as Status)}
+          >
+            <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {statuses.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Storage Notes</Label>
+          <Textarea
+            rows={1}
+            placeholder="Sleeve details, minor notes..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-700 text-xs focus-visible:border-indigo-500/50 focus-visible:ring-0 resize-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-xl font-bold tracking-wider text-slate-100 uppercase">Vault New Asset</h1>
-          <p className="text-xs text-slate-400 mt-1 font-mono">Resolve live TCG metadata and record a physical instance</p>
+          <p className="text-xs text-slate-400 mt-1 font-mono">
+            {isCustomMode
+              ? 'Enter card metadata manually — no API required'
+              : 'Resolve live TCG metadata and record a physical instance'}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800/60 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(false)}
+            className={`py-1 px-3 text-xs font-bold rounded-md transition-all ${
+              !isCustomMode
+                ? 'bg-indigo-600 text-white shadow'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            TCGdex
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(true)}
+            className={`py-1 px-3 text-xs font-bold rounded-md transition-all ${
+              isCustomMode
+                ? 'bg-indigo-600 text-white shadow'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Custom
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7 space-y-5">
-          <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 shadow-md">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
-              <Search className="w-3.5 h-3.5 text-indigo-400" />
-              1. Metadata Discovery (TCGdex)
-            </h2>
+          {!isCustomMode && (
+            <>
+              <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 shadow-md">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                  <Search className="w-3.5 h-3.5 text-indigo-400" />
+                  1. Metadata Discovery (TCGdex)
+                </h2>
 
-            <form onSubmit={handleSearch} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
-                <div className="sm:col-span-2">
+                <form onSubmit={handleSearch} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                    <div className="sm:col-span-2">
+                      <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Language</Label>
+                      <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800/60">
+                        <button
+                          type="button"
+                          onClick={() => setLanguage('EN')}
+                          className={`py-1 text-xs font-bold rounded-md transition-all ${
+                            language === 'EN'
+                              ? 'bg-indigo-600 text-white shadow'
+                              : 'text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          EN
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLanguage('JP')}
+                          className={`py-1 text-xs font-bold rounded-md transition-all ${
+                            language === 'JP'
+                              ? 'bg-indigo-600 text-white shadow'
+                              : 'text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          JP
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-4" ref={setSearchRef}>
+                      <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Set Filter</Label>
+                      <div className="relative">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            disabled={loadingSets}
+                            value={setQuery}
+                            placeholder={loadingSets ? 'Syncing sets…' : 'Search sets…'}
+                            onChange={(e) =>
+                            {
+                              setSetQuery(e.target.value);
+                              if (!e.target.value.trim())
+                              {
+                                setSelectedSet('');
+                              }
+                              setSetDropdownOpen(true);
+                            }}
+                            onFocus={() => setSetDropdownOpen(true)}
+                            className={`w-full bg-slate-950 text-slate-200 text-xs py-2 pl-3 pr-7 rounded-lg border outline-none transition-all disabled:opacity-50 placeholder:text-slate-600 ${
+                              selectedSet
+                                ? 'border-indigo-500/50'
+                                : 'border-slate-800 focus:border-indigo-500/50'
+                            }`}
+                          />
+                          {setQuery && (
+                            <button
+                              type="button"
+                              onClick={handleSetClear}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        {setDropdownOpen && (recentSets.length > 0 || filteredSets.length > 0) && (
+                          <div className="absolute z-50 top-full mt-1 w-full bg-slate-900 border border-slate-700/60 rounded-lg shadow-xl overflow-hidden">
+                            {recentSets.length > 0 && (
+                              <div className="px-3 pt-2.5 pb-2">
+                                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  Recent
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {recentSets.map((s) => (
+                                    <button
+                                      key={s.id}
+                                      type="button"
+                                      onMouseDown={(e) => { e.preventDefault(); handleSetSelect(s); }}
+                                      className={`px-2 py-0.5 rounded text-[9px] font-mono transition-colors cursor-pointer flex items-center gap-1 ${
+                                        selectedSet === s.id
+                                          ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40'
+                                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50'
+                                      }`}
+                                    >
+                                      <span className="opacity-60">{s.id}</span>
+                                      <span>{s.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {filteredSets.length > 0 && (
+                              <>
+                                {recentSets.length > 0 && <div className="border-t border-slate-800 mx-1" />}
+                                <div className="max-h-48 overflow-y-auto">
+                                  {filteredSets.map((s) => (
+                                    <button
+                                      key={s.id}
+                                      type="button"
+                                      onMouseDown={(e) => { e.preventDefault(); handleSetSelect(s); }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors cursor-pointer flex items-center gap-2 ${
+                                        selectedSet === s.id
+                                          ? 'bg-indigo-500/10 text-indigo-400 font-semibold'
+                                          : 'text-slate-300 hover:bg-slate-800/80'
+                                      }`}
+                                    >
+                                      <span className="font-mono text-[10px] text-slate-500 shrink-0">{s.id}</span>
+                                      <span className="truncate">{s.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Card Name Search</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="e.g. Charizard, Pikachu, Mewtwo..."
+                        value={cardNameQuery}
+                        onChange={(e) => setCardNameQuery(e.target.value)}
+                        className="flex-1 bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                      />
+                      <Button
+                        type="submit"
+                        disabled={searchingCards || loadingSets}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.2)] h-9 px-4"
+                      >
+                        {searchingCards ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Search className="w-3.5 h-3.5" />
+                        )}
+                        Search
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 shadow-md flex-1 flex flex-col min-h-[300px] max-h-[500px]">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 font-mono flex items-center gap-2">
+                  Search Results
+                  {searchResults.length > 0 && (
+                    <span className="text-indigo-400">{searchResults.length}</span>
+                  )}
+                  {selectedSet && setCardCount !== null && searchResults.length > 0 && searchResults.length < setCardCount && (
+                    <span className="text-[9px] text-slate-600 font-mono normal-case">(filtered from {setCardCount})</span>
+                  )}
+                </h3>
+
+                {searchingCards ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-10">
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-2" />
+                    <span className="text-xs font-medium text-slate-400">Interrogating TCGdex Database...</span>
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center border border-dashed border-slate-800/60 rounded-lg p-10 text-center bg-slate-950/20">
+                    {selectedSet && setCardCount !== null && setCardCount > 0 ? (
+                      <div className="space-y-1">
+                        <span className="text-xs text-amber-500/80 font-mono block">
+                          Card data for this set is not indexed in TCGdex.
+                        </span>
+                        <span className="text-[10px] text-slate-600 font-mono block">
+                          SM / Sword &amp; Shield era JP sets are not yet available. Try an SV-era set.
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500 font-mono">
+                        {selectedSet ? 'No cards found for this set.' : 'Enter criteria above to discover cards from the public Pokémon TCG API.'}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                    {searchResults.map((card) =>
+                    {
+                      const isCurrentlySelected = selectedCard?.id === card.id;
+                      return (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => handleSelectCard(card.id)}
+                          className={`flex flex-col p-1.5 rounded-lg border text-center transition-all ${
+                            isCurrentlySelected
+                              ? 'bg-indigo-600/15 border-indigo-500 shadow-inner'
+                              : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 hover:bg-slate-950/80'
+                          }`}
+                        >
+                          <div className="aspect-[3/4] bg-slate-950 rounded flex items-center justify-center p-1.5 overflow-hidden">
+                            {card.image ? (
+                              <img
+                                src={`${card.image}/low.png`}
+                                alt={card.name}
+                                className="max-h-full max-w-full object-contain filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="text-[8px] text-slate-600 font-mono">No Image</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-300 font-semibold truncate mt-1.5 block px-1">
+                            {card.name}
+                          </span>
+                          <span className="text-[8px] text-slate-500 font-mono block mt-0.5">
+                            #{card.localId}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {isCustomMode && (
+            <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 shadow-md">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                <Pencil className="w-3.5 h-3.5 text-indigo-400" />
+                1. Manual Card Entry
+              </h2>
+
+              <div className="space-y-4">
+                <div>
                   <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Language</Label>
-                  <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800/60">
+                  <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800/60 w-32">
                     <button
                       type="button"
                       onClick={() => setLanguage('EN')}
@@ -357,183 +990,158 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
                   </div>
                 </div>
 
-                <div className="sm:col-span-4" ref={setSearchRef}>
-                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Set Filter</Label>
-                  <div className="relative">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        disabled={loadingSets}
-                        value={setQuery}
-                        placeholder={loadingSets ? 'Syncing sets…' : 'Search sets…'}
-                        onChange={(e) =>
-                        {
-                          setSetQuery(e.target.value);
-                          if (!e.target.value.trim())
-                          {
-                            setSelectedSet('');
-                          }
-                          setSetDropdownOpen(true);
-                        }}
-                        onFocus={() => setSetDropdownOpen(true)}
-                        className={`w-full bg-slate-950 text-slate-200 text-xs py-2 pl-3 pr-7 rounded-lg border outline-none transition-all disabled:opacity-50 placeholder:text-slate-600 ${
-                          selectedSet
-                            ? 'border-indigo-500/50'
-                            : 'border-slate-800 focus:border-indigo-500/50'
-                        }`}
-                      />
-                      {setQuery && (
-                        <button
-                          type="button"
-                          onClick={handleSetClear}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">
+                      Card Name <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Iron Thorns"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">
+                      Card Number <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. 098/SV-P"
+                      value={customSetNumber}
+                      onChange={(e) => setCustomSetNumber(e.target.value)}
+                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                    />
+                  </div>
+                </div>
 
-                    {setDropdownOpen && (recentSets.length > 0 || filteredSets.length > 0) && (
-                      <div className="absolute z-50 top-full mt-1 w-full bg-slate-900 border border-slate-700/60 rounded-lg shadow-xl overflow-hidden">
-                        {recentSets.length > 0 && (
-                          <div className="px-3 pt-2.5 pb-2">
-                            <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                              <Clock className="w-2.5 h-2.5" />
-                              Recent
-                            </span>
-                            <div className="flex flex-wrap gap-1">
-                              {recentSets.map((s) => (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  onMouseDown={(e) => { e.preventDefault(); handleSetSelect(s); }}
-                                  className={`px-2 py-0.5 rounded text-[9px] font-mono transition-colors cursor-pointer ${
-                                    selectedSet === s.id
-                                      ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40'
-                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/50'
-                                  }`}
-                                >
-                                  {s.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                <div>
+                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">
+                    Set Name <span className="text-rose-500">*</span>
+                  </Label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. SV-P Promos"
+                    value={customSetName}
+                    onChange={(e) => setCustomSetName(e.target.value)}
+                    className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                  />
+                </div>
 
-                        {filteredSets.length > 0 && (
-                          <>
-                            {recentSets.length > 0 && <div className="border-t border-slate-800 mx-1" />}
-                            <div className="max-h-48 overflow-y-auto">
-                              {filteredSets.map((s) => (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  onMouseDown={(e) => { e.preventDefault(); handleSetSelect(s); }}
-                                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors cursor-pointer ${
-                                    selectedSet === s.id
-                                      ? 'bg-indigo-500/10 text-indigo-400 font-semibold'
-                                      : 'text-slate-300 hover:bg-slate-800/80'
-                                  }`}
-                                >
-                                  {s.name}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Supertype</Label>
+                    <Select value={customSupertype} onValueChange={setCustomSupertype}>
+                      <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Pokémon">Pokémon</SelectItem>
+                        <SelectItem value="Trainer">Trainer</SelectItem>
+                        <SelectItem value="Energy">Energy</SelectItem>
+                        <SelectItem value="Unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Rarity</Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Promo"
+                      value={customRarity}
+                      onChange={(e) => setCustomRarity(e.target.value)}
+                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Artist</Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Tonji Matsuno"
+                      value={customArtist}
+                      onChange={(e) => setCustomArtist(e.target.value)}
+                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800/50 space-y-3">
+                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                    <Upload className="w-3 h-3 text-indigo-400" />
+                    Card Image (optional)
+                  </Label>
+                  <div>
+                    <Label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">Image URL</Label>
+                    <Input
+                      type="text"
+                      placeholder="https://..."
+                      value={customImageUrl}
+                      onChange={(e) => setCustomImageUrl(e.target.value)}
+                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-8 focus-visible:border-indigo-500/50 focus-visible:ring-0"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[9px] font-mono text-slate-600 uppercase mb-1 block">
+                      Upload File {customImageFile && <span className="text-indigo-400 normal-case">(overwrites URL)</span>}
+                    </Label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setCustomImageFile(e.target.files?.[0] ?? null)}
+                      className="w-full text-[10px] text-slate-400 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-slate-800 file:text-slate-300 hover:file:bg-slate-700 cursor-pointer"
+                    />
+                    {customImageFile && (
+                      <p className="text-[9px] text-indigo-400 font-mono mt-1 truncate">{customImageFile.name}</p>
                     )}
                   </div>
                 </div>
               </div>
-
-              <div>
-                <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Card Name Search</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    placeholder="e.g. Charizard, Pikachu, Mewtwo..."
-                    value={cardNameQuery}
-                    onChange={(e) => setCardNameQuery(e.target.value)}
-                    className="flex-1 bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-600 text-xs h-9 focus-visible:border-indigo-500/50 focus-visible:ring-0"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={searchingCards || loadingSets}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.2)] h-9 px-4"
-                  >
-                    {searchingCards ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Search className="w-3.5 h-3.5" />
-                    )}
-                    Search
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </div>
-
-          <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800/80 shadow-md flex-1 flex flex-col min-h-[300px] max-h-[500px]">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 font-mono">
-              Search Results {searchResults.length > 0 && `(${searchResults.length})`}
-            </h3>
-
-            {searchingCards ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-10">
-                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-2" />
-                <span className="text-xs font-medium text-slate-400">Interrogating TCGdex Database...</span>
-              </div>
-            ) : searchResults.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center border border-dashed border-slate-800/60 rounded-lg p-10 text-center bg-slate-950/20">
-                <span className="text-xs text-slate-500 font-mono">
-                  Enter criteria above to discover cards from the public Pokémon TCG API.
-                </span>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                {searchResults.map((card) =>
-                {
-                  const isCurrentlySelected = selectedCard?.id === card.id;
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => handleSelectCard(card.id)}
-                      className={`flex flex-col p-1.5 rounded-lg border text-center transition-all ${
-                        isCurrentlySelected
-                          ? 'bg-indigo-600/15 border-indigo-500 shadow-inner'
-                          : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 hover:bg-slate-950/80'
-                      }`}
-                    >
-                      <div className="aspect-[3/4] bg-slate-950 rounded flex items-center justify-center p-1.5 overflow-hidden">
-                        {card.image ? (
-                          <img
-                            src={`${card.image}/low.png`}
-                            alt={card.name}
-                            className="max-h-full max-w-full object-contain filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span className="text-[8px] text-slate-600 font-mono">No Image</span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-300 font-semibold truncate mt-1.5 block px-1">
-                        {card.name}
-                      </span>
-                      <span className="text-[8px] text-slate-500 font-mono block mt-0.5">
-                        #{card.localId}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="lg:col-span-5">
-          {selectedCardLoading ? (
+          {isCustomMode ? (
+            <form onSubmit={handleCustomSubmit} className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4 shadow-lg">
+              <div className="flex justify-between items-start gap-4 pb-3 border-b border-slate-800">
+                <div className="flex-1 min-w-0">
+                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wide">
+                    Custom Entry
+                  </span>
+                  <h3 className="font-bold text-slate-200 mt-1.5 text-sm truncate">
+                    {customName || <span className="text-slate-600 font-normal italic">Card name…</span>}
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">
+                    {customSetName || '—'} {customSetNumber && `(#${customSetNumber})`}
+                  </p>
+                </div>
+              </div>
+
+              {formError && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg text-xs bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  {formError}
+                </div>
+              )}
+
+              {sharedInstanceFields}
+
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider h-10 shadow-[0_0_12px_rgba(99,102,241,0.3)] hover:shadow-[0_0_15px_rgba(99,102,241,0.5)]"
+              >
+                {submitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                Deposit in Vault
+              </Button>
+            </form>
+          ) : selectedCardLoading ? (
             <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
               <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
               <span className="text-xs text-slate-400">Fetching complete metadata profiles...</span>
@@ -566,178 +1174,7 @@ export const InstanceForm: React.FC<InstanceFormProps> = ({ onSuccess }) =>
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Storage Configuration</Label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800/80">
-                    {(['raw', 'graded'] as const).map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setStorageType(type)}
-                        className={`py-1.5 text-xs font-semibold rounded transition-all uppercase tracking-wider ${
-                          storageType === type
-                            ? 'bg-indigo-600 text-white shadow'
-                            : 'text-slate-500 hover:text-slate-300'
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {storageType === 'raw' && (
-                  <div>
-                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Estimated Condition</Label>
-                    <Select
-                      value={condition}
-                      onValueChange={(v) => setCondition(v as Condition)}
-                    >
-                      <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {conditions.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {storageType === 'graded' && (
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                    <div>
-                      <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Company</Label>
-                      <Select
-                        value={gradingCompany}
-                        onValueChange={(v) => setGradingCompany(v as GradingCompany)}
-                      >
-                        <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-8 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50 px-2">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {gradingCompanies.map((g) => (
-                            <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Grade</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="10"
-                        step="0.5"
-                        placeholder="10"
-                        value={grade}
-                        onChange={(e) => setGrade(e.target.value)}
-                        className="bg-slate-950 border-slate-800 text-slate-200 text-xs h-8 focus-visible:border-indigo-500/50 focus-visible:ring-0 px-2"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[9px] font-mono font-bold text-slate-500 uppercase mb-1 block">Cert #</Label>
-                      <Input
-                        type="text"
-                        placeholder="847291..."
-                        value={certNumber}
-                        onChange={(e) => setCertNumber(e.target.value)}
-                        className="bg-slate-950 border-slate-800 text-slate-200 text-xs h-8 focus-visible:border-indigo-500/50 focus-visible:ring-0 px-2"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 p-2 bg-slate-950/40 rounded border border-slate-800/50">
-                  <input
-                    type="checkbox"
-                    id="isMisprint"
-                    checked={isMisprint}
-                    onChange={(e) => setIsMisprint(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-indigo-500 rounded border-slate-800 cursor-pointer bg-slate-950"
-                  />
-                  <Label htmlFor="isMisprint" className="text-[10px] text-slate-400 font-medium cursor-pointer select-none">
-                    This is an Error Card / Misprint configuration
-                  </Label>
-                </div>
-
-                <div>
-                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1.5">
-                    <Tag className="w-3 h-3 text-indigo-400" />
-                    Card Tags
-                  </Label>
-                  <div className="space-y-1 p-3 bg-slate-950/40 rounded-lg border border-slate-800/50">
-                    {tagsConfig.map((tag) => (
-                      <div key={tag.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`tag-${tag.id}`}
-                          checked={selectedTags.includes(tag.id)}
-                          onChange={() => handleTagToggle(tag.id)}
-                          className="w-3.5 h-3.5 accent-indigo-500 rounded border-slate-800 cursor-pointer bg-slate-950 shrink-0"
-                        />
-                        <label htmlFor={`tag-${tag.id}`} className="flex items-baseline gap-1.5 cursor-pointer select-none">
-                          <span className="text-[10px] font-mono font-bold text-slate-300">{tag.id}</span>
-                          <span className="text-[9px] text-slate-600">— {tag.description}</span>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1.5">
-                    <MapPin className="w-3 h-3 text-indigo-400" />
-                    Storage Location
-                  </Label>
-                  <Select
-                    value={storageLocation || 'none'}
-                    onValueChange={(v) => setStorageLocation(v === 'none' ? '' : v)}
-                  >
-                    <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
-                      <SelectValue placeholder="Unspecified" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Unspecified</SelectItem>
-                      {storageLocationsConfig.map((loc) => (
-                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Initial Status</Label>
-                    <Select
-                      value={status}
-                      onValueChange={(v) => setStatus(v as Status)}
-                    >
-                      <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300 text-xs h-9 focus:ring-0 focus-visible:ring-0 focus-visible:border-indigo-500/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statuses.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-[10px] font-mono font-bold text-slate-500 uppercase mb-1.5 block">Storage Notes</Label>
-                    <Textarea
-                      rows={1}
-                      placeholder="Sleeve details, minor notes..."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="bg-slate-950 border-slate-800 text-slate-200 placeholder:text-slate-700 text-xs focus-visible:border-indigo-500/50 focus-visible:ring-0 resize-none"
-                    />
-                  </div>
-                </div>
-              </div>
+              {sharedInstanceFields}
 
               <Button
                 type="submit"
