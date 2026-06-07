@@ -6,5 +6,6 @@
   { "id": "cosmos-holo",          "description": "Cosmos / galaxy-foil background",         "shortLabel": "Cosmos Holo" },
   { "id": "reverse-holo",         "description": "Reverse holofoil variant",                "shortLabel": "Rev. Holo" },
   { "id": "stamped-promo",        "description": "Card has a stamped promo",                "shortLabel": "Stamped" },
-  { "id": "metal",                "description": "Card is made of metal",                   "shortLabel": "Metal" }
+  { "id": "metal",                "description": "Card is made of metal",                   "shortLabel": "Metal" },
+  { "id": "peelable-ditto",       "description": "This card can be peeled to uncover ditto", "shortLabel": "Peelable Ditto" }
 ]

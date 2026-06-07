@@ -2,5 +2,6 @@
   { "id": "office-wardrobe", "name": "Office Wardrobe" },
   { "id": "zapdos-tin",      "name": "Zapdos Tin" },
   { "id": "jolteon-tin",     "name": "Jolteon Tin" },
+  { "id": "moltres-tin",     "name": "Moltres Tin" },
   { "id": "pogo-tin",        "name": "Pokemon Go Tin" }
 ]
