@@ -72,6 +72,10 @@ To add new tags or storage locations, edit those JSON files — no schema migrat
 - **Third-party SDK types**: Import type definitions from the SDK package instead of using `any` or writing local mirrors (e.g. `import type { Card, CardResume } from '@tcgdex/sdk'`).
 - **No `as any` casts**: Use proper union type casts (e.g. `e.target.value as 'vaulted' | 'listed' | 'sold'`).
 
+## Active Plans
+
+- **SQLite → PostgreSQL migration**: `~/Desktop/DB_MIGRATION_PLAN.md` — full phase-by-phase plan including schema changes, dependency swap, data migration script, and Jenkins pipeline setup. Not committed to the repo.
+
 ## Key Data Model Notes
 - `InventoryItem` has no `purchasePrice` or `acquiredDate` — acquisition tracking was removed.
 - `storageType` is `'raw' | 'graded'` only. The `'sealed'` value no longer exists.
