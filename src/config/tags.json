@@ -1,11 +1,12 @@
 [
-  { "id": "sealed",               "description": "Unopened / factory-sealed item",         "shortLabel": "Sealed" },
-  { "id": "pokemon-center-stamp", "description": "Pokémon Center exclusive stamp variant",  "shortLabel": "PC Stamp" },
-  { "id": "miscentered",          "description": "Card is visibly off-center",              "shortLabel": "Miscentered" },
-  { "id": "1st-edition",          "description": "First edition print run",                 "shortLabel": "1st Edition" },
-  { "id": "cosmos-holo",          "description": "Cosmos / galaxy-foil background",         "shortLabel": "Cosmos Holo" },
-  { "id": "reverse-holo",         "description": "Reverse holofoil variant",                "shortLabel": "Rev. Holo" },
-  { "id": "stamped-promo",        "description": "Card has a stamped promo",                "shortLabel": "Stamped" },
-  { "id": "metal",                "description": "Card is made of metal",                   "shortLabel": "Metal" },
-  { "id": "peelable-ditto",       "description": "This card can be peeled to uncover ditto", "shortLabel": "Peelable Ditto" }
+  { "id": "sealed",               "description": "Unopened / factory-sealed item",           "shortLabel": "Sealed" },
+  { "id": "pokemon-center-stamp", "description": "Pokémon Center exclusive stamp variant",   "shortLabel": "PC Stamp" },
+  { "id": "miscentered",          "description": "Card is visibly off-center",               "shortLabel": "Miscentered" },
+  { "id": "1st-edition",          "description": "First edition print run",                  "shortLabel": "1st Edition" },
+  { "id": "cosmos-holo",          "description": "Cosmos / galaxy-foil background",          "shortLabel": "Cosmos Holo" },
+  { "id": "reverse-holo",         "description": "Reverse holofoil variant",                 "shortLabel": "Rev. Holo" },
+  { "id": "stamped-promo",        "description": "Card has a stamped promo",                 "shortLabel": "Stamped" },
+  { "id": "metal",                "description": "Card is made of metal",                    "shortLabel": "Metal" },
+  { "id": "peelable-ditto",       "description": "This card can be peeled to uncover ditto", "shortLabel": "Peelable Ditto" },
+  { "id": "radiant",              "descriptuon": "This card is Radiant (Shiny)",             "shortLabel": "Radiant Card" }
 ]
