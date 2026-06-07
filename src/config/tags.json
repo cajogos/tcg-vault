@@ -8,5 +8,5 @@
   { "id": "stamped-promo",        "description": "Card has a stamped promo",                 "shortLabel": "Stamped" },
   { "id": "metal",                "description": "Card is made of metal",                    "shortLabel": "Metal" },
   { "id": "peelable-ditto",       "description": "This card can be peeled to uncover ditto", "shortLabel": "Peelable Ditto" },
-  { "id": "radiant",              "descriptuon": "This card is Radiant (Shiny)",             "shortLabel": "Radiant Card" }
+  { "id": "radiant",              "description": "This card is Radiant (Shiny)",             "shortLabel": "Radiant Card" }
 ]
