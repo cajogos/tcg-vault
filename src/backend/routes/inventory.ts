@@ -104,6 +104,25 @@ export function createInventoryRouter(
     }
   });
 
+  router.patch('/:id/location', async (req, res) =>
+  {
+    try
+    {
+      const { id } = req.params;
+      const { storageLocation } = req.body;
+
+      await db.update(schema.inventoryItems)
+        .set({ storageLocation: storageLocation || null })
+        .where(eq(schema.inventoryItems.id, id));
+
+      res.json({ success: true });
+    }
+    catch (error)
+    {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   router.post('/:id/valuations', async (req, res) =>
   {
     try

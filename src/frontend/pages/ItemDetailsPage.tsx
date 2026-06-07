@@ -183,6 +183,7 @@ export const ItemDetailsPage: React.FC = () =>
   const [uploading, setUploading] = useState(false);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const item = collection.find(i => i.id === id);
@@ -229,6 +230,25 @@ export const ItemDetailsPage: React.FC = () =>
   {
     setLocalHistory([...(localHistory ?? item.priceHistory), entry]);
     refresh();
+  };
+
+  const onLocationSelect = async (val: string) =>
+  {
+    setUpdatingLocation(true);
+    try
+    {
+      await fetch(`/api/inventory/${item.id}/location`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storageLocation: val === '__none__' ? null : val }),
+      });
+      refresh();
+    }
+    finally
+    {
+      setUpdatingLocation(false);
+    }
   };
 
   const handlePhotoUpload = async (file: File) =>
@@ -424,7 +444,21 @@ export const ItemDetailsPage: React.FC = () =>
                 <p className="text-slate-500 text-xs mb-0.5 flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> Location
                 </p>
-                <p className="text-slate-200 font-mono text-xs">{item.storageLocation ? (storageLocations.find(l => l.id === item.storageLocation)?.name ?? item.storageLocation) : '—'}</p>
+                <Select
+                  value={item.storageLocation ?? '__none__'}
+                  onValueChange={onLocationSelect}
+                  disabled={updatingLocation}
+                >
+                  <SelectTrigger className="h-7 w-40 text-xs bg-slate-800 border-slate-700 text-slate-300">
+                    <SelectValue placeholder="— Unassigned —" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="__none__" className="text-xs text-slate-400 italic">— Unassigned —</SelectItem>
+                    {storageLocations.map((l) => (
+                      <SelectItem key={l.id} value={l.id} className="text-xs text-slate-300">{l.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {item.tags && item.tags.length > 0 && (
